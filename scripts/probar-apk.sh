@@ -9,10 +9,21 @@ OUT=capturas
 mkdir -p "$OUT"
 FALLOS=0
 
-ui() { python3 scripts/ui.py "$@" || FALLOS=$((FALLOS + 1)); }
 foto() { adb exec-out screencap -p > "$OUT/$1.png"; echo "📸 $1"; }
+# Si un paso falla: captura, guarda la jerarquía de pantalla y el log, y termina.
+ui() {
+  if ! python3 scripts/ui.py "$@"; then
+    foto "ERROR-paso"
+    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+    adb shell cat /sdcard/ui.xml > "$OUT/ERROR-pantalla.xml"
+    adb logcat -d > "$OUT/logcat.txt"
+    echo "❌ Falló el paso: $*"
+    exit 1
+  fi
+}
 escribir() { adb shell input text "$1"; sleep 0.8; }
-ocultar_teclado() { adb shell input keyevent 4; sleep 0.8; }
+# Cierra el teclado tocando una etiqueta (sin usar «atrás», que cerraría el formulario)
+ocultar_teclado() { python3 scripts/ui.py tap "Categoría" >/dev/null 2>&1 || true; sleep 0.5; }
 
 adb logcat -c
 echo "== Instalando $APK"

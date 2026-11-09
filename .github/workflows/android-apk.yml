@@ -101,6 +101,19 @@ jobs:
           name: capturas-emulador
           path: capturas
 
+      - name: Guardar capturas en la rama capturas-prueba
+        if: always()
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd capturas
+          git init -q
+          git checkout -q -b capturas-prueba
+          git add -A
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+            commit -qm "Capturas de la prueba (ejecución ${{ github.run_number }})"
+          git push -qf "https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git" capturas-prueba
+
   publicar:
     needs: [apk, probar]
     runs-on: ubuntu-latest
