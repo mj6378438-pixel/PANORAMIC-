@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BarraProgreso, colorUso } from '../components/BarraProgreso';
 import { ItemMovimiento } from '../components/ItemMovimiento';
+import { buscarCategoria } from '../lib/categorias';
 import { claveMes, formatoDinero, hoyISO, nombreMes } from '../lib/formato';
-import { ordenar, resumen, useFinanzas } from '../lib/store';
+import { gastoPorCategoria, ordenar, resumen, useFinanzas } from '../lib/store';
 import { colores } from '../lib/tema';
 import { Movimiento, TipoMovimiento } from '../lib/types';
 
@@ -10,10 +12,11 @@ interface Props {
   onNuevo: (tipo: TipoMovimiento) => void;
   onEditar: (m: Movimiento) => void;
   onVerTodo: () => void;
+  onVerPresupuestos: () => void;
 }
 
-export function Inicio({ onNuevo, onEditar, onVerTodo }: Props) {
-  const { movimientos, presupuesto } = useFinanzas();
+export function Inicio({ onNuevo, onEditar, onVerTodo, onVerPresupuestos }: Props) {
+  const { movimientos, presupuestos, presupuestoTotal: presupuesto } = useFinanzas();
   const mesActual = claveMes(hoyISO());
 
   const total = useMemo(() => resumen(movimientos), [movimientos]);
@@ -23,9 +26,16 @@ export function Inicio({ onNuevo, onEditar, onVerTodo }: Props) {
   );
   const recientes = useMemo(() => ordenar(movimientos).slice(0, 5), [movimientos]);
 
+  // Apartados que van por encima del 80 % de su límite este mes
+  const alertas = useMemo(() => {
+    const gastado = gastoPorCategoria(movimientos.filter((m) => claveMes(m.fecha) === mesActual));
+    return Object.entries(presupuestos)
+      .map(([nombre, limite]) => ({ nombre, limite, gastado: gastado[nombre] ?? 0 }))
+      .filter((a) => a.limite > 0 && a.gastado / a.limite >= 0.8)
+      .sort((a, b) => b.gastado / b.limite - a.gastado / a.limite);
+  }, [movimientos, presupuestos, mesActual]);
+
   const usoPresupuesto = presupuesto > 0 ? delMes.gastos / presupuesto : 0;
-  const colorBarra =
-    usoPresupuesto >= 1 ? colores.gasto : usoPresupuesto >= 0.8 ? '#F59E0B' : colores.ingreso;
 
   return (
     <ScrollView contentContainerStyle={estilos.contenido}>
@@ -60,19 +70,14 @@ export function Inicio({ onNuevo, onEditar, onVerTodo }: Props) {
         </Pressable>
       </View>
 
-      {presupuesto > 0 && (
-        <View style={estilos.tarjeta}>
+      {presupuesto > 0 ? (
+        <Pressable style={estilos.tarjeta} onPress={onVerPresupuestos}>
           <View style={estilos.filaEntre}>
             <Text style={estilos.tituloSeccion}>Presupuesto del mes</Text>
-            <Text style={estilos.textoSuave}>{Math.round(usoPresupuesto * 100)}%</Text>
+            <Text style={estilos.textoSuave}>{Math.round(usoPresupuesto * 100)}% ›</Text>
           </View>
-          <View style={estilos.barraFondo}>
-            <View
-              style={[
-                estilos.barra,
-                { width: `${Math.min(usoPresupuesto, 1) * 100}%`, backgroundColor: colorBarra },
-              ]}
-            />
+          <View style={{ marginVertical: 10 }}>
+            <BarraProgreso uso={usoPresupuesto} alto={10} />
           </View>
           <Text style={estilos.textoSuave}>
             {formatoDinero(delMes.gastos)} de {formatoDinero(presupuesto)} ·{' '}
@@ -80,7 +85,34 @@ export function Inicio({ onNuevo, onEditar, onVerTodo }: Props) {
               ? `quedan ${formatoDinero(presupuesto - delMes.gastos)}`
               : `te pasaste ${formatoDinero(delMes.gastos - presupuesto)}`}
           </Text>
-        </View>
+          {alertas.map((a) => {
+            const cat = buscarCategoria('gasto', a.nombre);
+            const uso = a.gastado / a.limite;
+            return (
+              <View key={a.nombre} style={estilos.alerta}>
+                <Text style={estilos.alertaTexto}>
+                  {uso >= 1 ? '⚠️' : '🔔'} {cat.icono} {a.nombre}:{' '}
+                  {a.gastado > a.limite
+                    ? `te pasaste ${formatoDinero(a.gastado - a.limite)}`
+                    : a.gastado === a.limite
+                      ? 'límite alcanzado'
+                      : `quedan ${formatoDinero(a.limite - a.gastado)}`}
+                </Text>
+                <Text style={[estilos.alertaPct, { color: colorUso(uso) }]}>
+                  {Math.round(uso * 100)}%
+                </Text>
+              </View>
+            );
+          })}
+        </Pressable>
+      ) : (
+        <Pressable style={[estilos.tarjeta, estilos.filaEntre]} onPress={onVerPresupuestos}>
+          <Text style={[estilos.textoSuave, { flex: 1 }]}>
+            💡 Divide tu dinero en apartados (vivienda, comida, ocio…) para controlar cuánto
+            gastas en cada uno.
+          </Text>
+          <Text style={{ color: colores.primario, fontWeight: '700', marginLeft: 8 }}>Empezar ›</Text>
+        </Pressable>
       )}
 
       <View style={[estilos.filaEntre, { marginTop: 8, marginBottom: 10 }]}>
@@ -127,14 +159,17 @@ const estilos = StyleSheet.create({
   filaEntre: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   tituloSeccion: { fontSize: 16, fontWeight: '700', color: colores.texto },
   textoSuave: { color: colores.textoSuave, fontSize: 13 },
-  barraFondo: {
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colores.borde,
-    overflow: 'hidden',
-    marginVertical: 10,
+  alerta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colores.fondo,
   },
-  barra: { height: '100%', borderRadius: 5 },
+  alertaTexto: { flex: 1, fontSize: 13, color: colores.texto },
+  alertaPct: { fontSize: 13, fontWeight: '700', marginLeft: 8 },
   vacio: { alignItems: 'center', paddingVertical: 32 },
   vacioEmoji: { fontSize: 40 },
   vacioTexto: { color: colores.textoSuave, textAlign: 'center', marginTop: 8, lineHeight: 20 },

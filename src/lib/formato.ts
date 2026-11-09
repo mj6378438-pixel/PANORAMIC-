@@ -3,18 +3,48 @@ const MESES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
+export const MONEDAS = [
+  { codigo: 'EUR', simbolo: '€', antes: false },
+  { codigo: 'USD', simbolo: '$', antes: true },
+  { codigo: 'MXN', simbolo: '$', antes: true },
+  { codigo: 'COP', simbolo: '$', antes: true },
+  { codigo: 'ARS', simbolo: '$', antes: true },
+  { codigo: 'CLP', simbolo: '$', antes: true },
+  { codigo: 'PEN', simbolo: 'S/', antes: true },
+  { codigo: 'GBP', simbolo: '£', antes: true },
+] as const;
+export type CodigoMoneda = (typeof MONEDAS)[number]['codigo'];
+
+let monedaActual: (typeof MONEDAS)[number] = MONEDAS[0];
+
+/** La llama el store al cargar / cambiar la moneda */
+export function establecerMoneda(codigo: string) {
+  monedaActual = MONEDAS.find((m) => m.codigo === codigo) ?? MONEDAS[0];
+}
+
 export function formatoDinero(valor: number): string {
   const signo = valor < 0 ? '-' : '';
   const [entero, dec] = Math.abs(valor).toFixed(2).split('.');
   const conPuntos = entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `${signo}$${conPuntos},${dec}`;
+  const numero = `${conPuntos},${dec}`;
+  return monedaActual.antes
+    ? `${signo}${monedaActual.simbolo}${numero}`
+    : `${signo}${numero} ${monedaActual.simbolo}`;
 }
 
-export function hoyISO(): string {
-  const d = new Date();
+function aISO(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+export function hoyISO(): string {
+  return aISO(new Date());
+}
+
+export function moverDia(fechaISO: string, delta: number): string {
+  const [y, m, d] = fechaISO.split('-').map(Number);
+  return aISO(new Date(y, m - 1, d + delta));
 }
 
 /** Clave de mes "yyyy-mm" */
@@ -40,9 +70,10 @@ export function formatoFecha(fechaISO: string): string {
 
 /** Acepta "1.234,56", "1234.56", "1234,5" */
 export function parsearMonto(texto: string): number {
-  let t = texto.trim().replace(/\s/g, '').replace('$', '');
+  let t = texto.trim().replace(/\s/g, '').replace(/[€$£]|S\//g, '');
   if (t === '') return NaN;
   if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
   const n = Number(t);
   return Number.isFinite(n) ? n : NaN;
 }
@@ -52,4 +83,9 @@ export function fechaValida(fechaISO: string): boolean {
   const [y, m, d] = fechaISO.split('-').map(Number);
   const f = new Date(y, m - 1, d);
   return f.getFullYear() === y && f.getMonth() === m - 1 && f.getDate() === d;
+}
+
+/** Texto para editar un monto ("1234,5") */
+export function montoAEditable(valor: number): string {
+  return valor > 0 ? String(valor).replace('.', ',') : '';
 }

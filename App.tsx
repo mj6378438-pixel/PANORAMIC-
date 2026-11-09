@@ -10,12 +10,14 @@ import { Ajustes } from './src/screens/Ajustes';
 import { Estadisticas } from './src/screens/Estadisticas';
 import { Inicio } from './src/screens/Inicio';
 import { Movimientos } from './src/screens/Movimientos';
+import { Presupuestos } from './src/screens/Presupuestos';
 
-type Pestana = 'inicio' | 'movimientos' | 'estadisticas' | 'ajustes';
+type Pestana = 'inicio' | 'movimientos' | 'presupuestos' | 'estadisticas' | 'ajustes';
 
 const PESTANAS: { id: Pestana; titulo: string; icono: string }[] = [
   { id: 'inicio', titulo: 'Inicio', icono: '🏠' },
   { id: 'movimientos', titulo: 'Movimientos', icono: '📋' },
+  { id: 'presupuestos', titulo: 'Apartados', icono: '🎯' },
   { id: 'estadisticas', titulo: 'Estadísticas', icono: '📊' },
   { id: 'ajustes', titulo: 'Ajustes', icono: '⚙️' },
 ];
@@ -50,8 +52,10 @@ function Contenido() {
   return (
     <SafeAreaView style={estilos.raiz} edges={['top']}>
       <View style={estilos.cabecera}>
-        <Text style={estilos.titulo}>{pestana === 'inicio' ? 'Gestor Económico' : titulo}</Text>
-        {pestana !== 'ajustes' && (
+        <Text style={estilos.titulo}>
+          {pestana === 'inicio' ? 'Gestor Económico' : pestana === 'presupuestos' ? 'Mis apartados' : titulo}
+        </Text>
+        {pestana !== 'ajustes' && pestana !== 'presupuestos' && (
           <Pressable style={estilos.fab} onPress={() => abrirNuevo('gasto')} accessibilityLabel="Nuevo movimiento">
             <Text style={estilos.fabTexto}>+</Text>
           </Pressable>
@@ -60,11 +64,17 @@ function Contenido() {
 
       <View style={{ flex: 1 }}>
         {pestana === 'inicio' && (
-          <Inicio onNuevo={abrirNuevo} onEditar={abrirEdicion} onVerTodo={() => setPestana('movimientos')} />
+          <Inicio
+            onNuevo={abrirNuevo}
+            onEditar={abrirEdicion}
+            onVerTodo={() => setPestana('movimientos')}
+            onVerPresupuestos={() => setPestana('presupuestos')}
+          />
         )}
         {pestana === 'movimientos' && <Movimientos onEditar={abrirEdicion} />}
+        {pestana === 'presupuestos' && <Presupuestos />}
         {pestana === 'estadisticas' && <Estadisticas />}
-        {pestana === 'ajustes' && <Ajustes />}
+        {pestana === 'ajustes' && <Ajustes onVerPresupuestos={() => setPestana('presupuestos')} />}
       </View>
 
       <SafeAreaView edges={['bottom']} style={estilos.barraPestanas}>
@@ -136,5 +146,5 @@ const estilos = StyleSheet.create({
   },
   pestana: { flex: 1, alignItems: 'center', paddingVertical: 8 },
   pestanaIcono: { fontSize: 20 },
-  pestanaTexto: { fontSize: 11, color: colores.textoSuave, marginTop: 2 },
+  pestanaTexto: { fontSize: 10, color: colores.textoSuave, marginTop: 2 },
 });

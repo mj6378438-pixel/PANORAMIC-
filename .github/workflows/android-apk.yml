@@ -1,0 +1,74 @@
+name: Compilar APK Android
+
+on:
+  push:
+    branches: [main, master, 'ccr-*']
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Comprobar tipos
+        run: npx tsc --noEmit
+
+      - name: Generar proyecto Android
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Compilar APK (release)
+        working-directory: android
+        env:
+          GRADLE_OPTS: -Xmx4g -Dorg.gradle.jvmargs=-Xmx4g
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+
+      - name: Preparar archivo
+        id: apk
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          NOMBRE="GestorEconomico-v${VERSION}-${{ github.run_number }}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$NOMBRE"
+          echo "nombre=$NOMBRE" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: ${{ steps.apk.outputs.nombre }}
+
+      - name: Publicar en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.apk.outputs.version }}-${{ github.run_number }}
+          name: Gestor Económico v${{ steps.apk.outputs.version }} (build ${{ github.run_number }})
+          target_commitish: ${{ github.sha }}
+          files: ${{ steps.apk.outputs.nombre }}
+          body: |
+            📱 **Descarga el archivo `.apk` de abajo e instálalo en tu Android.**
+
+            Si el móvil lo bloquea, permite «Instalar apps desconocidas» para tu navegador o gestor de archivos.

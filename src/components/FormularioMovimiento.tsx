@@ -13,7 +13,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CATEGORIAS } from '../lib/categorias';
-import { fechaValida, hoyISO, parsearMonto } from '../lib/formato';
+import {
+  claveMes,
+  fechaValida,
+  formatoDinero,
+  formatoFecha,
+  hoyISO,
+  montoAEditable,
+  moverDia,
+  parsearMonto,
+} from '../lib/formato';
 import { useFinanzas } from '../lib/store';
 import { colores } from '../lib/tema';
 import { Movimiento, TipoMovimiento } from '../lib/types';
@@ -27,7 +36,7 @@ interface Props {
 }
 
 export function FormularioMovimiento({ visible, editando, tipoInicial = 'gasto', onCerrar }: Props) {
-  const { agregar, actualizar, eliminar } = useFinanzas();
+  const { agregar, actualizar, eliminar, movimientos, presupuestos } = useFinanzas();
   const [tipo, setTipo] = useState<TipoMovimiento>(tipoInicial);
   const [monto, setMonto] = useState('');
   const [categoria, setCategoria] = useState(CATEGORIAS[tipoInicial][0].nombre);
@@ -38,7 +47,7 @@ export function FormularioMovimiento({ visible, editando, tipoInicial = 'gasto',
     if (!visible) return;
     if (editando) {
       setTipo(editando.tipo);
-      setMonto(String(editando.monto).replace('.', ','));
+      setMonto(montoAEditable(editando.monto));
       setCategoria(editando.categoria);
       setDescripcion(editando.descripcion);
       setFecha(editando.fecha);
@@ -63,7 +72,7 @@ export function FormularioMovimiento({ visible, editando, tipoInicial = 'gasto',
       return;
     }
     if (!fechaValida(fecha)) {
-      Alert.alert('Fecha inválida', 'Usa el formato AAAA-MM-DD, por ejemplo 2026-11-09.');
+      Alert.alert('Fecha inválida', 'Elige una fecha válida.');
       return;
     }
     const datos = {
@@ -92,6 +101,21 @@ export function FormularioMovimiento({ visible, editando, tipoInicial = 'gasto',
       },
     ]);
   };
+
+  // Cuánto queda en el apartado elegido este mes (sin contar el movimiento que se edita)
+  const limite = tipo === 'gasto' ? presupuestos[categoria] ?? 0 : 0;
+  const mesFecha = fechaValida(fecha) ? claveMes(fecha) : claveMes(hoyISO());
+  const gastadoCat = movimientos
+    .filter(
+      (m) =>
+        m.tipo === 'gasto' &&
+        m.categoria === categoria &&
+        claveMes(m.fecha) === mesFecha &&
+        m.id !== editando?.id,
+    )
+    .reduce((a, m) => a + m.monto, 0);
+  const montoActual = parsearMonto(monto) > 0 ? parsearMonto(monto) : 0;
+  const restante = limite - gastadoCat - montoActual;
 
   const colorTipo = tipo === 'ingreso' ? colores.ingreso : colores.gasto;
 
@@ -159,6 +183,16 @@ export function FormularioMovimiento({ visible, editando, tipoInicial = 'gasto',
               })}
             </View>
 
+            {limite > 0 && (
+              <View style={[estilos.aviso, restante < 0 && { backgroundColor: '#FEE2E2' }]}>
+                <Text style={[estilos.avisoTexto, restante < 0 && { color: colores.gasto }]}>
+                  {restante >= 0
+                    ? `Te quedarán ${formatoDinero(restante)} de ${formatoDinero(limite)} en ${categoria} este mes`
+                    : `⚠️ Te pasarás ${formatoDinero(-restante)} del límite de ${categoria} (${formatoDinero(limite)})`}
+                </Text>
+              </View>
+            )}
+
             <Text style={estilos.etiqueta}>Descripción (opcional)</Text>
             <TextInput
               value={descripcion}
@@ -168,15 +202,38 @@ export function FormularioMovimiento({ visible, editando, tipoInicial = 'gasto',
               maxLength={60}
             />
 
-            <Text style={estilos.etiqueta}>Fecha (AAAA-MM-DD)</Text>
-            <TextInput
-              value={fecha}
-              onChangeText={setFecha}
-              placeholder="2026-11-09"
-              style={estilos.input}
-              maxLength={10}
-              keyboardType="numbers-and-punctuation"
-            />
+            <Text style={estilos.etiqueta}>Fecha</Text>
+            <View style={estilos.filaFecha}>
+              <Pressable
+                style={estilos.flechaFecha}
+                onPress={() => fechaValida(fecha) && setFecha(moverDia(fecha, -1))}
+                hitSlop={6}
+              >
+                <Text style={estilos.flechaTexto}>‹</Text>
+              </Pressable>
+              <Text style={estilos.fechaTexto}>
+                {fechaValida(fecha) ? formatoFecha(fecha) : fecha}
+                {fecha === hoyISO() ? '  (hoy)' : fecha === moverDia(hoyISO(), -1) ? '  (ayer)' : ''}
+              </Text>
+              <Pressable
+                style={estilos.flechaFecha}
+                onPress={() => fechaValida(fecha) && setFecha(moverDia(fecha, 1))}
+                hitSlop={6}
+              >
+                <Text style={estilos.flechaTexto}>›</Text>
+              </Pressable>
+            </View>
+            <View style={[estilos.chips, { marginTop: 8 }]}>
+              <Pressable style={estilos.chip} onPress={() => setFecha(hoyISO())}>
+                <Text style={estilos.chipTexto}>Hoy</Text>
+              </Pressable>
+              <Pressable style={estilos.chip} onPress={() => setFecha(moverDia(hoyISO(), -1))}>
+                <Text style={estilos.chipTexto}>Ayer</Text>
+              </Pressable>
+              <Pressable style={estilos.chip} onPress={() => setFecha(moverDia(hoyISO(), -7))}>
+                <Text style={estilos.chipTexto}>Hace 1 semana</Text>
+              </Pressable>
+            </View>
 
             {editando && (
               <Pressable onPress={borrar} style={estilos.botonEliminar}>
@@ -226,6 +283,21 @@ const estilos = StyleSheet.create({
     borderColor: colores.borde,
   },
   inputMonto: { fontSize: 32, fontWeight: '700' },
+  aviso: { marginTop: 12, backgroundColor: '#EEF2FF', borderRadius: 10, padding: 10 },
+  avisoTexto: { color: colores.primario, fontSize: 13, fontWeight: '600' },
+  filaFecha: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colores.tarjeta,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colores.borde,
+    paddingVertical: 4,
+  },
+  flechaFecha: { paddingHorizontal: 16, paddingVertical: 4 },
+  flechaTexto: { fontSize: 26, color: colores.primario, fontWeight: '600' },
+  fechaTexto: { fontSize: 16, color: colores.texto, fontWeight: '600' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     paddingHorizontal: 12,
