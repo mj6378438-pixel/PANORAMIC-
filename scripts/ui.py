@@ -30,8 +30,28 @@ def nodos():
     return list(raiz.iter("node"))
 
 
+def cerrar_avisos_sistema(lista) -> bool:
+    """Cierra diálogos del sistema del emulador («X isn't responding»)."""
+    if not any("isn't responding" in (n.get("text") or "") or "no responde" in (n.get("text") or "")
+               for n in lista):
+        return False
+    for n in lista:
+        if (n.get("text") or "") in ("Wait", "Esperar"):
+            m = re.findall(r"\d+", n.get("bounds", ""))
+            if len(m) == 4:
+                x1, y1, x2, y2 = map(int, m)
+                adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+                print("ℹ️  Cerrado aviso del sistema del emulador", file=sys.stderr)
+                time.sleep(1.5)
+                return True
+    return False
+
+
 def buscar(texto: str, contiene: bool):
-    for n in nodos():
+    lista = nodos()
+    if cerrar_avisos_sistema(lista):
+        lista = nodos()
+    for n in lista:
         for attr in ("text", "content-desc"):
             v = (n.get(attr) or "").strip()
             if not v:

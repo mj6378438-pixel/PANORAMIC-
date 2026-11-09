@@ -26,6 +26,10 @@ escribir() { adb shell input text "$1"; sleep 0.8; }
 ocultar_teclado() { python3 scripts/ui.py tap "Categoría" >/dev/null 2>&1 || true; sleep 0.5; }
 
 adb logcat -c
+# Evitar diálogos «no responde» del sistema (el emulador es lento)
+adb shell settings put global anr_show_background 0 || true
+adb shell settings put secure anr_show_background 0 || true
+adb shell am force-stop com.google.android.apps.nexuslauncher || true
 echo "== Instalando $APK"
 adb install -r "$APK" || { echo "ERROR: no se pudo instalar"; exit 1; }
 
